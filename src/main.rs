@@ -34,7 +34,8 @@ fn main() -> Result<()> {
             .arg(Arg::new("verbose")
                 .short('v')
                 .long("verbose")
-                .help("Enable verbose output")))
+                .help("Enable verbose output")
+                .action(clap::ArgAction::SetTrue)))
         .subcommand(Command::new("configure")
             .about("Upload and apply custom Nginx configuration")
             .arg(Arg::new("config-file")
@@ -46,7 +47,8 @@ fn main() -> Result<()> {
             .arg(Arg::new("verbose")
                 .short('v')
                 .long("verbose")
-                .help("Enable verbose output")))
+                .help("Enable verbose output")
+                .action(clap::ArgAction::SetTrue)))
         .subcommand(Command::new("create-site")
             .about("Create a new site configuration")
             .arg(Arg::new("site-name")
@@ -103,11 +105,11 @@ fn main() -> Result<()> {
     
     match matches.subcommand() {
         Some(("install", install_matches)) => {
-            let verbose = install_matches.get_flag("verbose");
+            let verbose = install_matches.contains_id("verbose");
             run_install(verbose)
         },
         Some(("configure", configure_matches)) => {
-            let verbose = configure_matches.get_flag("verbose");
+            let verbose = configure_matches.contains_id("verbose");
             let config_file = configure_matches.get_one::<String>("config-file").unwrap();
             run_configure(config_file, verbose)
         },
@@ -116,8 +118,8 @@ fn main() -> Result<()> {
             let domain = create_site_matches.get_one::<String>("domain").unwrap();
             let default_port = String::from("80");
             let port = create_site_matches.get_one::<String>("port").unwrap_or(&default_port);
-            let enable_ssl = create_site_matches.get_flag("enable-ssl");
-            let verbose = create_site_matches.get_flag("verbose");
+            let enable_ssl = create_site_matches.contains_id("enable-ssl");
+            let verbose = create_site_matches.contains_id("verbose");
             run_create_site(site_name, domain, port, enable_ssl, verbose)
         },
         Some(("enable-ssl", enable_ssl_matches)) => {
@@ -128,7 +130,7 @@ fn main() -> Result<()> {
         Some(("deploy", deploy_matches)) => {
             let site_name = deploy_matches.get_one::<String>("site-name").unwrap();
             let source_folder = deploy_matches.get_one::<String>("source-folder").unwrap();
-            let verbose = deploy_matches.get_flag("verbose");
+            let verbose = deploy_matches.contains_id("verbose");
             run_deploy(site_name, source_folder, verbose)
         },
         _ => {
