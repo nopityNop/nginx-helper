@@ -122,10 +122,13 @@ impl SshClient {
         let cmd = command.trim();
         
         if let Some(sudo_password) = &self.config.sudo_password {
+            // Escape single quotes in the password by replacing ' with '\''
+            let escaped_password = sudo_password.replace("'", "'\\''");
+            
             let sudo_cmd = if cmd.starts_with("sudo ") {
-                format!("echo '{}' | sudo -S {}", sudo_password, &cmd[5..])
+                format!("echo '{}' | sudo -S {}", escaped_password, &cmd[5..])
             } else {
-                format!("echo '{}' | sudo -S {}", sudo_password, cmd)
+                format!("echo '{}' | sudo -S {}", escaped_password, cmd)
             };
             
             return self.execute_command(&sudo_cmd);

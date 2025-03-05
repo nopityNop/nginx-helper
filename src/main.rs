@@ -219,6 +219,55 @@ fn run_install(verbose: bool) -> Result<()> {
         
     println!("Successfully connected to SSH server!");
     
+    // Check if sudo is installed
+    println!("Checking if sudo is installed...");
+    let sudo_check_result = ssh_client.execute_command("which sudo");
+    let sudo_installed = match sudo_check_result {
+        Ok(output) => !output.trim().is_empty(),
+        Err(_) => false,
+    };
+    
+    if !sudo_installed {
+        eprintln!("Error: 'sudo' is not installed on the remote server.");
+        eprintln!("Please install sudo manually before continuing:");
+        eprintln!("  1. Log in to the server as root");
+        eprintln!("  2. Run: apt-get update && apt-get install -y sudo");
+        eprintln!("  3. Run this command again");
+        return Err(anyhow::anyhow!("sudo not installed on remote server"));
+    }
+    println!("sudo is installed.");
+    
+    // Check if curl is installed
+    println!("Checking if curl is installed...");
+    let curl_check_result = ssh_client.execute_command("which curl");
+    let curl_installed = match curl_check_result {
+        Ok(output) => !output.trim().is_empty(),
+        Err(_) => false,
+    };
+    
+    if !curl_installed {
+        println!("curl is not installed. Installing curl...");
+        // Use noninteractive frontend to avoid prompts
+        match ssh_client.execute_sudo_command("DEBIAN_FRONTEND=noninteractive apt-get update") {
+            Ok(_) => {
+                println!("APT repository updated.");
+                match ssh_client.execute_sudo_command("DEBIAN_FRONTEND=noninteractive apt-get install -y curl") {
+                    Ok(_) => println!("curl has been successfully installed."),
+                    Err(e) => {
+                        eprintln!("Error installing curl: {}", e);
+                        return Err(anyhow::anyhow!("Failed to install curl: {}", e));
+                    }
+                }
+            },
+            Err(e) => {
+                eprintln!("Error updating APT repository: {}", e);
+                return Err(anyhow::anyhow!("Failed to update APT: {}", e));
+            }
+        }
+    } else {
+        println!("curl is already installed.");
+    }
+    
     let nginx_manager = NginxManager::new(&ssh_client, verbose);
     
     if let Err(e) = nginx_manager.install() {

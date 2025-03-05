@@ -58,8 +58,8 @@ impl<'a> NginxManager<'a> {
     fn install_prerequisites(&self) -> Result<(), NginxError> {
         println!("Installing prerequisites...");
         
-        self.log("Executing command: sudo apt update");
-        match self.ssh_client.execute_sudo_command("sudo apt update") {
+        self.log("Executing command: sudo DEBIAN_FRONTEND=noninteractive apt update");
+        match self.ssh_client.execute_sudo_command("DEBIAN_FRONTEND=noninteractive apt update") {
             Ok(output) => {
                 if self.verbose {
                     println!("Output: {}", output);
@@ -76,8 +76,8 @@ impl<'a> NginxManager<'a> {
     fn install_nginx(&self) -> Result<(), NginxError> {
         println!("Installing Nginx...");
         
-        self.log("Executing command: sudo apt install -y nginx");
-        match self.ssh_client.execute_sudo_command("sudo apt install -y nginx") {
+        self.log("Executing command: sudo DEBIAN_FRONTEND=noninteractive apt install -y nginx");
+        match self.ssh_client.execute_sudo_command("DEBIAN_FRONTEND=noninteractive apt install -y nginx") {
             Ok(output) => {
                 if self.verbose {
                     println!("Output: {}", output);
