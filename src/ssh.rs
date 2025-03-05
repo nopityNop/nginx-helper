@@ -4,6 +4,8 @@ use std::io::Read;
 use std::net::TcpStream;
 use std::path::Path;
 use thiserror::Error;
+use std::fs;
+use std::io::Write;
 
 #[derive(Error, Debug)]
 pub enum SshError {
@@ -21,6 +23,9 @@ pub enum SshError {
     
     #[error("Sudo requires a password")]
     SudoPasswordRequired,
+    
+    #[error("File transfer error: {0}")]
+    FileTransferError(String),
 }
 
 pub struct SshConfig {
@@ -114,20 +119,87 @@ impl SshClient {
     }
     
     pub fn execute_sudo_command(&self, command: &str) -> Result<String, SshError> {
-        if command.trim().starts_with("sudo") {
-            if let Some(sudo_password) = &self.config.sudo_password {
-                let sudo_command = format!("echo '{}' | sudo -S {}", sudo_password, &command[5..]);
-                return self.execute_command(&sudo_command);
-            } else {
-                return Err(SshError::SudoPasswordRequired);
-            }
-        }
+        let cmd = command.trim();
         
-        self.execute_command(command)
+        if let Some(sudo_password) = &self.config.sudo_password {
+            let sudo_cmd = if cmd.starts_with("sudo ") {
+                format!("echo '{}' | sudo -S {}", sudo_password, &cmd[5..])
+            } else {
+                format!("echo '{}' | sudo -S {}", sudo_password, cmd)
+            };
+            
+            return self.execute_command(&sudo_cmd);
+        } else {
+            return Err(SshError::SudoPasswordRequired);
+        }
     }
     
     #[allow(dead_code)]
     pub fn disconnect(&mut self) {
         self.session = None;
+    }
+    
+    pub fn upload_file(&self, local_path: &str, remote_path: &str) -> Result<(), SshError> {
+        let session = self.session.as_ref()
+            .ok_or_else(|| SshError::ConnectionError("Not connected".to_string()))?;
+            
+        let local_path = Path::new(local_path);
+        if !local_path.exists() {
+            return Err(SshError::FileTransferError(format!("Local file not found: {}", local_path.display())));
+        }
+        
+        let file_content = fs::read(local_path)
+            .map_err(|e| SshError::IoError(e))?;
+            
+        let mut remote_file = session.scp_send(
+            Path::new(remote_path),
+            0o644,
+            file_content.len() as u64,
+            None
+        ).map_err(|e| SshError::FileTransferError(e.to_string()))?;
+        
+        remote_file.write_all(&file_content)
+            .map_err(|e| SshError::IoError(e))?;
+            
+        remote_file.send_eof()
+            .map_err(|e| SshError::FileTransferError(e.to_string()))?;
+            
+        remote_file.wait_eof()
+            .map_err(|e| SshError::FileTransferError(e.to_string()))?;
+            
+        remote_file.close()
+            .map_err(|e| SshError::FileTransferError(e.to_string()))?;
+            
+        Ok(())
+    }
+    
+    pub fn upload_directory(&self, local_dir: &str, remote_dir: &str) -> Result<(), SshError> {
+        let local_path = Path::new(local_dir);
+        if !local_path.exists() || !local_path.is_dir() {
+            return Err(SshError::FileTransferError(format!("Local directory not found: {}", local_path.display())));
+        }
+        
+        self.execute_command(&format!("mkdir -p {}", remote_dir))
+            .map_err(|e| SshError::CommandError(format!("Failed to create remote directory: {}", e)))?;
+            
+        let entries = fs::read_dir(local_path)
+            .map_err(|e| SshError::IoError(e))?;
+            
+        for entry in entries {
+            let entry = entry.map_err(|e| SshError::IoError(e))?;
+            let path = entry.path();
+            let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+            let remote_path = format!("{}/{}", remote_dir, file_name);
+            
+            if path.is_dir() {
+                let local_subdir = path.to_string_lossy().to_string();
+                self.upload_directory(&local_subdir, &remote_path)?;
+            } else {
+                let local_file = path.to_string_lossy().to_string();
+                self.upload_file(&local_file, &remote_path)?;
+            }
+        }
+        
+        Ok(())
     }
 }

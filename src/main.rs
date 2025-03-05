@@ -81,6 +81,20 @@ fn main() -> Result<()> {
                 .help("Email address for Let's Encrypt notifications")
                 .required(true)
                 .index(2)))
+        .subcommand(SubCommand::with_name("deploy")
+            .about("Deploy local files to a remote site")
+            .arg(Arg::with_name("site-name")
+                .help("Name of the site to deploy to (directory in /var/www/html/)")
+                .required(true)
+                .index(1))
+            .arg(Arg::with_name("source-folder")
+                .help("Local source folder to deploy")
+                .required(true)
+                .index(2))
+            .arg(Arg::with_name("verbose")
+                .short("v")
+                .long("verbose")
+                .help("Enable verbose output")))
         .subcommand(SubCommand::with_name("help")
             .about("Show detailed help information"))
         .get_matches();
@@ -107,6 +121,12 @@ fn main() -> Result<()> {
             let site_name = enable_ssl_matches.value_of("site-name").unwrap();
             let email = enable_ssl_matches.value_of("email").unwrap();
             run_enable_ssl(site_name, email)
+        },
+        ("deploy", Some(deploy_matches)) => {
+            let site_name = deploy_matches.value_of("site-name").unwrap();
+            let source_folder = deploy_matches.value_of("source-folder").unwrap();
+            let verbose = deploy_matches.is_present("verbose");
+            run_deploy(site_name, source_folder, verbose)
         },
         _ => {
             println!("No valid subcommand provided. Use --help for usage information.");
@@ -154,6 +174,12 @@ fn print_detailed_help() {
     println!("    Options:");
     println!("      <site-name>            Name of the site to enable SSL for");
     println!("      <email>                Email address for Let's Encrypt notifications");
+    println!();
+    println!("  deploy [options]         Deploy local files to a remote site");
+    println!("    Options:");
+    println!("      <site-name>            Name of the site to deploy to (directory in /var/www/html/)");
+    println!("      <source-folder>        Local source folder to deploy");
+    println!("      -v, --verbose          Show detailed output during deployment");
     println!();
     println!("  --help, -h, help        Show this help information");
     println!();
@@ -330,6 +356,83 @@ fn run_enable_ssl(site_name: &str, email: &str) -> Result<()> {
     }
     
     println!("SSL enabled successfully for {}!", site_name);
+    
+    Ok(())
+}
+
+fn run_deploy(site_name: &str, source_folder: &str, verbose: bool) -> Result<()> {
+    let config = match Config::from_env() {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Configuration Error: {}", e);
+            eprintln!("\nPlease edit the .env file in the application directory with your SSH connection details.");
+            eprintln!("For help, run: nginx-setup help");
+            return Err(e.into());
+        }
+    };
+    
+    if verbose {
+        println!("Connecting to {}:{} as {}", config.ssh_host, config.ssh_port, config.ssh_user);
+    }
+    
+    let username = config.ssh_user.clone();
+    
+    let ssh_config = SshConfig {
+        host: config.ssh_host,
+        port: config.ssh_port,
+        username: config.ssh_user,
+        key_path: config.ssh_key_path,
+        sudo_password: config.sudo_password,
+    };
+    
+    let mut ssh_client = SshClient::new(ssh_config);
+    
+    ssh_client.connect()
+        .context("Failed to connect to SSH server")?;
+        
+    if verbose {
+        println!("Successfully connected to SSH server!");
+    }
+    
+    let source_path = Path::new(source_folder);
+    if !source_path.exists() || !source_path.is_dir() {
+        return Err(anyhow::anyhow!("Source folder does not exist or is not a directory: {}", source_folder));
+    }
+    
+    let remote_path = format!("/var/www/html/{}", site_name);
+    
+    if verbose {
+        println!("Ensuring remote directory exists: {}", remote_path);
+    }
+    
+    ssh_client.execute_sudo_command(&format!("mkdir -p {}", remote_path))
+        .context("Failed to create remote directory")?;
+        
+    if verbose {
+        println!("Setting correct permissions on remote directory");
+    }
+    
+    ssh_client.execute_sudo_command(&format!("chown -R {} {}", username, remote_path))
+        .context("Failed to set ownership")?;
+        
+    if verbose {
+        println!("Uploading files from {} to {}", source_folder, remote_path);
+    }
+    
+    ssh_client.upload_directory(source_folder, &remote_path)
+        .context("Failed to upload files")?;
+        
+    if verbose {
+        println!("Setting permissions on uploaded files");
+    }
+    
+    ssh_client.execute_sudo_command(&format!("find {} -type d -exec chmod 755 {{}} \\;", remote_path))
+        .context("Failed to set directory permissions")?;
+        
+    ssh_client.execute_sudo_command(&format!("find {} -type f -exec chmod 644 {{}} \\;", remote_path))
+        .context("Failed to set file permissions")?;
+        
+    println!("Successfully deployed site {} from {} to {}", site_name, source_folder, remote_path);
     
     Ok(())
 }
