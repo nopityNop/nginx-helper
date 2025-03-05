@@ -25,7 +25,7 @@ nginx-setup [COMMAND] [OPTIONS]
 ### Available Commands
 
 - `install` - Install Nginx from official repository
-- `configure [--config-file <path>]` - Upload and apply custom Nginx configuration
+- `configure [--config-file <path>]` - Upload and apply custom nginx.conf file
 - `create-site <site-name> <domain> [options]` - Create a new site configuration
 - `enable-ssl <site-name> <email>` - Enable SSL with Let's Encrypt for an existing site
 - `deploy <site-name> <source-folder>` - Deploy local files to a site on the remote server
