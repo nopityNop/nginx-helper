@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use clap::{App, Arg, SubCommand};
+use clap::{Command, Arg};
 use std::path::Path;
 use std::fs;
 use std::env;
@@ -25,107 +25,110 @@ fn main() -> Result<()> {
         return Ok(());
     }
     
-    let matches = App::new("Nginx Setup")
+    let matches = Command::new("Nginx Setup")
         .version("1.0.0")
         .author("[nop,nop,]")
         .about("Setup and configure Nginx on remote Debian 11 & 12 servers")
-        .subcommand(SubCommand::with_name("install")
+        .subcommand(Command::new("install")
             .about("Install Nginx on the remote server")
-            .arg(Arg::with_name("verbose")
-                .short("v")
+            .arg(Arg::new("verbose")
+                .short('v')
                 .long("verbose")
                 .help("Enable verbose output")))
-        .subcommand(SubCommand::with_name("configure")
+        .subcommand(Command::new("configure")
             .about("Upload and apply custom Nginx configuration")
-            .arg(Arg::with_name("config-file")
-                .short("c")
+            .arg(Arg::new("config-file")
+                .short('c')
                 .long("config-file")
                 .value_name("FILE")
                 .help("Path to the nginx.conf file to upload")
-                .default_value("nginx.conf")
-                .takes_value(true))
-            .arg(Arg::with_name("verbose")
-                .short("v")
+                .default_value("nginx.conf"))
+            .arg(Arg::new("verbose")
+                .short('v')
                 .long("verbose")
                 .help("Enable verbose output")))
-        .subcommand(SubCommand::with_name("create-site")
+        .subcommand(Command::new("create-site")
             .about("Create a new site configuration")
-            .arg(Arg::with_name("site-name")
+            .arg(Arg::new("site-name")
                 .help("Name of the site (used for directory name)")
                 .required(true)
                 .index(1))
-            .arg(Arg::with_name("domain")
+            .arg(Arg::new("domain")
                 .help("Domain name for the site")
                 .required(true)
                 .index(2))
-            .arg(Arg::with_name("port")
-                .short("p")
+            .arg(Arg::new("port")
+                .short('p')
                 .long("port")
                 .help("Port to listen on (default: 80)")
-                .takes_value(true))
-            .arg(Arg::with_name("enable-ssl")
-                .short("s")
+                .value_parser(clap::value_parser!(String)))
+            .arg(Arg::new("enable-ssl")
+                .short('s')
                 .long("enable-ssl")
-                .help("Enable SSL configuration"))
-            .arg(Arg::with_name("verbose")
-                .short("v")
+                .help("Enable SSL configuration")
+                .action(clap::ArgAction::SetTrue))
+            .arg(Arg::new("verbose")
+                .short('v')
                 .long("verbose")
-                .help("Enable verbose output")))
-        .subcommand(SubCommand::with_name("enable-ssl")
+                .help("Enable verbose output")
+                .action(clap::ArgAction::SetTrue)))
+        .subcommand(Command::new("enable-ssl")
             .about("Enable SSL for an existing site using Let's Encrypt")
-            .arg(Arg::with_name("site-name")
+            .arg(Arg::new("site-name")
                 .help("Name of the site to enable SSL for")
                 .required(true)
                 .index(1))
-            .arg(Arg::with_name("email")
+            .arg(Arg::new("email")
                 .help("Email address for Let's Encrypt notifications")
                 .required(true)
                 .index(2)))
-        .subcommand(SubCommand::with_name("deploy")
+        .subcommand(Command::new("deploy")
             .about("Deploy local files to a remote site")
-            .arg(Arg::with_name("site-name")
+            .arg(Arg::new("site-name")
                 .help("Name of the site to deploy to (directory in /var/www/html/)")
                 .required(true)
                 .index(1))
-            .arg(Arg::with_name("source-folder")
+            .arg(Arg::new("source-folder")
                 .help("Local source folder to deploy")
                 .required(true)
                 .index(2))
-            .arg(Arg::with_name("verbose")
-                .short("v")
+            .arg(Arg::new("verbose")
+                .short('v')
                 .long("verbose")
-                .help("Enable verbose output")))
-        .subcommand(SubCommand::with_name("help")
+                .help("Enable verbose output")
+                .action(clap::ArgAction::SetTrue)))
+        .subcommand(Command::new("help")
             .about("Show detailed help information"))
         .get_matches();
     
     match matches.subcommand() {
-        ("install", Some(install_matches)) => {
-            let verbose = install_matches.is_present("verbose");
+        Some(("install", install_matches)) => {
+            let verbose = install_matches.get_flag("verbose");
             run_install(verbose)
         },
-        ("configure", Some(configure_matches)) => {
-            let verbose = configure_matches.is_present("verbose");
-            let config_file = configure_matches.value_of("config-file").unwrap();
+        Some(("configure", configure_matches)) => {
+            let verbose = configure_matches.get_flag("verbose");
+            let config_file = configure_matches.get_one::<String>("config-file").unwrap();
             run_configure(config_file, verbose)
         },
-        ("create-site", Some(create_site_matches)) => {
-            let site_name = create_site_matches.value_of("site-name").unwrap();
-            let domain = create_site_matches.value_of("domain").unwrap();
-            let port = create_site_matches.value_of("port").unwrap_or("80");
-            let enable_ssl = create_site_matches.is_present("enable-ssl");
-            let verbose = create_site_matches.is_present("verbose");
+        Some(("create-site", create_site_matches)) => {
+            let site_name = create_site_matches.get_one::<String>("site-name").unwrap();
+            let domain = create_site_matches.get_one::<String>("domain").unwrap();
+            let default_port = String::from("80");
+            let port = create_site_matches.get_one::<String>("port").unwrap_or(&default_port);
+            let enable_ssl = create_site_matches.get_flag("enable-ssl");
+            let verbose = create_site_matches.get_flag("verbose");
             run_create_site(site_name, domain, port, enable_ssl, verbose)
         },
-        ("enable-ssl", Some(enable_ssl_matches)) => {
-            let site_name = enable_ssl_matches.value_of("site-name").unwrap();
-            let email = enable_ssl_matches.value_of("email").unwrap();
+        Some(("enable-ssl", enable_ssl_matches)) => {
+            let site_name = enable_ssl_matches.get_one::<String>("site-name").unwrap();
+            let email = enable_ssl_matches.get_one::<String>("email").unwrap();
             run_enable_ssl(site_name, email)
         },
-        ("deploy", Some(deploy_matches)) => {
-            let site_name = deploy_matches.value_of("site-name").unwrap();
-            let source_folder = deploy_matches.value_of("source-folder").unwrap();
-            let verbose = deploy_matches.is_present("verbose");
+        Some(("deploy", deploy_matches)) => {
+            let site_name = deploy_matches.get_one::<String>("site-name").unwrap();
+            let source_folder = deploy_matches.get_one::<String>("source-folder").unwrap();
+            let verbose = deploy_matches.get_flag("verbose");
             run_deploy(site_name, source_folder, verbose)
         },
         _ => {
