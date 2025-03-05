@@ -315,11 +315,6 @@ impl<'a> NginxManager<'a> {
     <h1>Welcome to {}!</h1>
     <p>If you see this page, the nginx web server is successfully installed and
     working. Further configuration is required.</p>
-    
-    <p>For online documentation and support please refer to
-    <a href="http://nginx.org/">nginx.org</a>.<br/>
-    
-    <p><em>Thank you for using nginx.</em></p>
 </body>
 </html>"#, domain, domain);
         
@@ -365,16 +360,6 @@ impl<'a> NginxManager<'a> {
     location / {{
         try_files $uri $uri/ =404;
     }}
-
-    # Additional settings
-    # Enable gzip compression
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript;
-
-    # Add security headers
-    add_header X-Content-Type-Options nosniff;
-    add_header X-Frame-Options SAMEORIGIN;
-    add_header X-XSS-Protection "1; mode=block";
 
     # For SSL configuration, use the enable-ssl command
     # Example: nginx-setup enable-ssl {site_name} your-email@example.com
